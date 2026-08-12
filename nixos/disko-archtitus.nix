@@ -108,10 +108,13 @@ in
           type = "EF02";
         };
 
-        # sgdisk -n 2::+300M --typecode=2:ef00 --change-name=2:'EFIBOOT'
+        # sgdisk -n 2::+1G --typecode=2:ef00 --change-name=2:'EFIBOOT'
+        # 1G because the ESP is mounted at /boot and holds every kernel plus its
+        # initramfs. With NVIDIA early KMS an initramfs is ~118MB, so three
+        # kernels need ~419MB and the old 300M overflowed. See 0-preinstall.sh.
         EFIBOOT = {
           priority = 2;
-          size = "300M";
+          size = "1G";
           type = "EF00";
           content = {
             type = "filesystem";

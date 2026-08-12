@@ -129,14 +129,27 @@ echo -ne "
 "
 # Graphics Drivers find and install
 #
-# NOTE: these are deliberately independent `if` blocks rather than an elif
+# Matched on PCI class + vendor ID, not on the human-readable name in lspci's
+# output. That name comes from the pci.ids database and depends on how current
+# that database happens to be: on this project's own target machine an older
+# pci.ids rendered the iGPU as plain
+#
+#     Display controller: Intel Corporation Device 4680
+#
+# with no "UHD" and no "Graphics" anywhere in it, so a name-based match skipped
+# the Intel stack entirely and silently. Vendor IDs do not change:
+# 8086 Intel, 10de NVIDIA, 1002/1022 AMD. Class 03xx is display controllers,
+# which also catches devices reported as "Display controller" rather than
+# "VGA compatible controller".
+#
+# These are also deliberately independent `if` blocks rather than an elif
 # chain. Hybrid machines (Intel iGPU + NVIDIA dGPU is extremely common) need
 # BOTH stacks installed -- with an elif, NVIDIA matched first and the box was
 # left with no mesa/vulkan-intel at all, losing iGPU video decode and any
 # fallback if the NVIDIA module failed to build.
-gpu_type=$(lspci)
+gpu_devices=$(lspci -nn | grep -E '\[03[0-9a-f]{2}\]')
 
-if grep -E "NVIDIA|GeForce" <<< ${gpu_type}; then
+if grep -qiE '\[10de:' <<< "${gpu_devices}"; then
     echo "Installing NVIDIA drivers (open kernel modules, DKMS)"
     # nvidia-open-dkms instead of nvidia:
     #   - DKMS rebuilds against ANY kernel (linux-lts, linux-zen, linux-cachyos).
@@ -173,12 +186,12 @@ if grep -E "NVIDIA|GeForce" <<< ${gpu_type}; then
     fi
 fi
 
-if lspci | grep 'VGA' | grep -E "Radeon|AMD"; then
+if grep -qiE '\[(1002|1022):' <<< "${gpu_devices}"; then
     pacman -S --noconfirm --needed xf86-video-amdgpu vulkan-radeon lib32-vulkan-radeon \
         libva-mesa-driver mesa lib32-mesa
 fi
 
-if grep -E "Integrated Graphics Controller|Intel Corporation UHD|Intel Corporation .* Graphics" <<< ${gpu_type}; then
+if grep -qiE '\[8086:' <<< "${gpu_devices}"; then
     pacman -S --noconfirm --needed mesa lib32-mesa vulkan-intel lib32-vulkan-intel \
         intel-media-driver libva-intel-driver libvdpau-va-gl libva-utils
 fi
