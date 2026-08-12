@@ -166,6 +166,47 @@ if grep -E "Integrated Graphics Controller|Intel Corporation UHD|Intel Corporati
     pacman -S --noconfirm --needed mesa lib32-mesa vulkan-intel lib32-vulkan-intel \
         intel-media-driver libva-intel-driver libvdpau-va-gl libva-utils
 fi
+
+if [[ ${INSTALL_CACHYOS_KERNEL} == "yes" ]]; then
+echo -ne "
+-------------------------------------------------------------------------
+                    Installing CachyOS Kernel
+-------------------------------------------------------------------------
+"
+    # Uses the vendor's own bootstrap script rather than hand-adding the repo,
+    # so the signing key is imported and locally signed the way upstream
+    # intends. Everything here is non-fatal on purpose: a third-party mirror
+    # being unreachable must never take down the whole install. Worst case the
+    # machine boots stock `linux` with `linux-lts` as backup, exactly as if the
+    # option had been declined.
+    (
+        set -e
+        # curl is not part of the pacstrap set in 0-preinstall.sh, so it is not
+        # guaranteed to exist inside the chroot. xz is needed to unpack .tar.xz.
+        pacman -S --noconfirm --needed curl xz
+        cachy_tmp=$(mktemp -d)
+        cd "${cachy_tmp}"
+        curl -fsSL https://mirror.cachyos.org/cachyos-repo.tar.xz -o cachyos-repo.tar.xz
+        tar xf cachyos-repo.tar.xz
+        cd cachyos-repo
+        # invoked via bash so a missing exec bit in the tarball is not fatal
+        bash ./cachyos-repo.sh
+
+        # Keep the kernels, drop the distro. cachyos-repo.sh also wires up the
+        # v3/v4 rebuilds of core/extra; disabling them leaves the base system
+        # sourced from stock Arch while [cachyos] still provides linux-cachyos.
+        awk '
+            /^\[/ { in_opt = ($0 ~ /^\[cachyos(-core|-extra)?-v[34]\]/) }
+            { if (in_opt && NF && $0 !~ /^#/) print "#" $0; else print }
+        ' /etc/pacman.conf > /etc/pacman.conf.cachytrim
+        mv /etc/pacman.conf.cachytrim /etc/pacman.conf
+
+        pacman -Sy --noconfirm
+        # headers included so the nvidia-open-dkms modules build for this kernel too
+        pacman -S --noconfirm --needed linux-cachyos linux-cachyos-headers
+    ) && echo "CachyOS kernel installed" \
+      || echo "WARNING: CachyOS kernel setup failed -- continuing with linux + linux-lts"
+fi
 #SETUP IS WRONG THIS IS RUN
 if ! source $HOME/ArchTitus/configs/setup.conf; then
 	# Loop through user input until the user gives a valid username

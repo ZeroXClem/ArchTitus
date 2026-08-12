@@ -354,6 +354,21 @@ cudatoolkit () {
   set_option INSTALL_CUDA ${options[$?]}
 }
 
+# @description Offer the CachyOS kernel (BORE/sched-ext scheduler) from the
+# CachyOS repo, on top of an otherwise stock Arch install.
+cachyoskernel () {
+  echo -ne "Install the CachyOS kernel (linux-cachyos)?\n\n
+  Adds the BORE / sched-ext scheduler, which mainly improves frame-time\n
+  consistency (1%% lows) in games and desktop responsiveness under heavy load.\n
+  Stock 'linux' and 'linux-lts' stay installed and selectable in GRUB.\n\n
+  This adds a THIRD-PARTY repo maintained by the CachyOS team. Only the\n
+  [cachyos] repo is kept; the v3/v4 optimised rebuilds of core/extra are\n
+  disabled so your base system stays stock Arch.\n"
+  options=(no yes)
+  select_option $? 4 "${options[@]}"
+  set_option INSTALL_CACHYOS_KERNEL ${options[$?]}
+}
+
 # More features in future
 # language (){}
 
@@ -379,6 +394,9 @@ fi
 clear
 logo
 cudatoolkit
+clear
+logo
+cachyoskernel
 clear
 logo
 diskpart
