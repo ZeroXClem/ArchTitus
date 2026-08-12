@@ -112,16 +112,59 @@ echo -ne "
 -------------------------------------------------------------------------
 "
 # Graphics Drivers find and install
+#
+# NOTE: these are deliberately independent `if` blocks rather than an elif
+# chain. Hybrid machines (Intel iGPU + NVIDIA dGPU is extremely common) need
+# BOTH stacks installed -- with an elif, NVIDIA matched first and the box was
+# left with no mesa/vulkan-intel at all, losing iGPU video decode and any
+# fallback if the NVIDIA module failed to build.
 gpu_type=$(lspci)
+
 if grep -E "NVIDIA|GeForce" <<< ${gpu_type}; then
-    pacman -S --noconfirm --needed nvidia
-	nvidia-xconfig
-elif lspci | grep 'VGA' | grep -E "Radeon|AMD"; then
-    pacman -S --noconfirm --needed xf86-video-amdgpu
-elif grep -E "Integrated Graphics Controller" <<< ${gpu_type}; then
-    pacman -S --noconfirm --needed libva-intel-driver libvdpau-va-gl lib32-vulkan-intel vulkan-intel libva-intel-driver libva-utils lib32-mesa
-elif grep -E "Intel Corporation UHD" <<< ${gpu_type}; then
-    pacman -S --needed --noconfirm libva-intel-driver libvdpau-va-gl lib32-vulkan-intel vulkan-intel libva-intel-driver libva-utils lib32-mesa
+    echo "Installing NVIDIA drivers (open kernel modules, DKMS)"
+    # nvidia-open-dkms instead of nvidia:
+    #   - DKMS rebuilds against ANY kernel (linux-lts, linux-zen, linux-cachyos).
+    #     The plain `nvidia` package ships prebuilt modules for the stock `linux`
+    #     kernel only, so swapping kernels later gives you an unbootable system.
+    #   - The open modules are NVIDIA's recommended path on Turing and newer,
+    #     and behave considerably better under Wayland.
+    # linux-headers is listed explicitly so DKMS can build regardless of the
+    # order the package lists get applied in.
+    pacman -S --noconfirm --needed nvidia-open-dkms nvidia-utils lib32-nvidia-utils \
+        nvidia-settings linux-headers
+
+    # Early KMS. Without the nvidia modules in the initramfs the console handoff
+    # to the display manager flickers and the Plymouth splash configured in
+    # 3-post-setup.sh does not render on NVIDIA hardware at all.
+    if ! grep -q 'nvidia_drm' /etc/mkinitcpio.conf; then
+        sed -i 's/^MODULES=(\(.*\))$/MODULES=(\1 nvidia nvidia_modeset nvidia_uvm nvidia_drm)/' /etc/mkinitcpio.conf
+        sed -i 's/^MODULES=( /MODULES=(/' /etc/mkinitcpio.conf
+        mkinitcpio -P
+    fi
+
+    # NOT running `nvidia-xconfig` here, on purpose.
+    #
+    # It writes a static /etc/X11/xorg.conf containing hardcoded metamodes and
+    # monitor sync ranges. That file then fights the desktop's own display
+    # manager (mutter/kwin) on every login, and goes silently stale the moment
+    # monitors are added, removed or rearranged -- producing display layouts
+    # that cannot be fixed from the GUI. Modern Arch autodetects outputs
+    # correctly, and Wayland ignores xorg.conf entirely.
+
+    if [[ ${INSTALL_CUDA} == "yes" ]]; then
+        echo "Installing CUDA toolkit"
+        pacman -S --noconfirm --needed cuda cudnn
+    fi
+fi
+
+if lspci | grep 'VGA' | grep -E "Radeon|AMD"; then
+    pacman -S --noconfirm --needed xf86-video-amdgpu vulkan-radeon lib32-vulkan-radeon \
+        libva-mesa-driver mesa lib32-mesa
+fi
+
+if grep -E "Integrated Graphics Controller|Intel Corporation UHD|Intel Corporation .* Graphics" <<< ${gpu_type}; then
+    pacman -S --noconfirm --needed mesa lib32-mesa vulkan-intel lib32-vulkan-intel \
+        intel-media-driver libva-intel-driver libvdpau-va-gl libva-utils
 fi
 #SETUP IS WRONG THIS IS RUN
 if ! source $HOME/ArchTitus/configs/setup.conf; then
@@ -190,8 +233,9 @@ if [[ ${FS} == "luks" ]]; then
 # Making sure to edit mkinitcpio conf if luks is selected
 # add encrypt in mkinitcpio.conf before filesystems in hooks
     sed -i 's/filesystems/encrypt filesystems/g' /etc/mkinitcpio.conf
-# making mkinitcpio with linux kernel
-    mkinitcpio -p linux
+# regenerate every initramfs preset -- `-p linux` silently skips any other
+# kernel (linux-lts, linux-zen, linux-cachyos), leaving it unbootable under LUKS
+    mkinitcpio -P
 fi
 echo -ne "
 -------------------------------------------------------------------------

@@ -340,6 +340,20 @@ installtype () {
   set_option INSTALL_TYPE $install_type
 }
 
+# @description Choose whether to install the CUDA toolkit. NVIDIA hardware only.
+cudatoolkit () {
+  if ! grep -qE "NVIDIA|GeForce" <<< "$(lspci)"; then
+    set_option INSTALL_CUDA no
+    return
+  fi
+  echo -ne "NVIDIA GPU detected. Install the CUDA toolkit (cuda + cudnn)?\n\n
+  Needed for local ML work: PyTorch, ollama, llama.cpp, Stable Diffusion.\n
+  Adds roughly 4-5GB to the install. Skip it if you only use hosted APIs.\n"
+  options=(no yes)
+  select_option $? 4 "${options[@]}"
+  set_option INSTALL_CUDA ${options[$?]}
+}
+
 # More features in future
 # language (){}
 
@@ -362,6 +376,9 @@ if [[ ! $desktop_env == server ]]; then
   logo
   installtype
 fi
+clear
+logo
+cudatoolkit
 clear
 logo
 diskpart
