@@ -108,6 +108,22 @@ fi
 
 echo -ne "
 -------------------------------------------------------------------------
+                    Installing Fallback Kernel
+-------------------------------------------------------------------------
+"
+# Installed here rather than via pkg-files/pacman-pkgs.txt because that list is
+# skipped entirely when DESKTOP_ENV=server (see the guard above) -- and a
+# headless box is exactly where a second bootable kernel matters most, since
+# there is no desktop to fall back to and possibly no easy console access.
+#
+# Rolling release plus DKMS kernel modules means eventually meeting a kernel
+# that will not build. A known-good LTS entry already in the GRUB menu turns
+# that from an unbootable machine into a reboot. Headers included so
+# nvidia-open-dkms builds against this kernel too.
+pacman -S --noconfirm --needed linux-lts linux-lts-headers
+
+echo -ne "
+-------------------------------------------------------------------------
                     Installing Graphics Drivers
 -------------------------------------------------------------------------
 "
@@ -189,8 +205,14 @@ echo -ne "
         curl -fsSL https://mirror.cachyos.org/cachyos-repo.tar.xz -o cachyos-repo.tar.xz
         tar xf cachyos-repo.tar.xz
         cd cachyos-repo
-        # invoked via bash so a missing exec bit in the tarball is not fatal
-        bash ./cachyos-repo.sh
+        # `yes |` is load-bearing: cachyos-repo.sh shells out to `pacman -U`
+        # WITHOUT --noconfirm and runs under `set -e`. Unattended, that prompt
+        # reads EOF, the script aborts before adding any repo, and the kernel
+        # install then fails with "target not found: linux-cachyos".
+        # Invoked via bash so a missing exec bit in the tarball is not fatal,
+        # and from inside its own directory because it references
+        # ./install-repo.awk by relative path.
+        yes | bash ./cachyos-repo.sh --install
 
         # Keep the kernels, drop the distro. cachyos-repo.sh also wires up the
         # v3/v4 rebuilds of core/extra; disabling them leaves the base system
