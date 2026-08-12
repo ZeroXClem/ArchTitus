@@ -207,6 +207,41 @@ echo -ne "
     ) && echo "CachyOS kernel installed" \
       || echo "WARNING: CachyOS kernel setup failed -- continuing with linux + linux-lts"
 fi
+
+if [[ ${INSTALL_CHAOTIC_AUR} == "yes" ]]; then
+echo -ne "
+-------------------------------------------------------------------------
+                    Enabling Chaotic-AUR
+-------------------------------------------------------------------------
+"
+    # Runs before 2-user.sh, so the AUR helper picks up prebuilt binaries for
+    # anything in pkg-files/aur-pkgs.txt instead of compiling it.
+    (
+        set -e
+        # The full 40-character fingerprint, deliberately, rather than the short
+        # key ID upstream's docs use. This key gets --lsign-key'd, which grants
+        # it authority over package signatures on this machine, and short IDs
+        # are collidable. Verified against keyserver.ubuntu.com as belonging to
+        # Pedro Henrique Lara Campos (PedroHLC), a Chaotic-AUR maintainer.
+        CHAOTIC_KEY="EF925EA60F33D0CB85C44AD13056513887B78AEB"
+        pacman-key --recv-key "${CHAOTIC_KEY}" --keyserver keyserver.ubuntu.com
+        pacman-key --lsign-key "${CHAOTIC_KEY}"
+
+        pacman -U --noconfirm \
+            'https://cdn-mirror.chaotic.cx/chaotic-aur/chaotic-keyring.pkg.tar.zst' \
+            'https://cdn-mirror.chaotic.cx/chaotic-aur/chaotic-mirrorlist.pkg.tar.zst'
+
+        # Appended at the END of pacman.conf on purpose. pacman resolves by repo
+        # order, so keeping chaotic-aur last means official Arch packages always
+        # win and chaotic-aur only supplies what Arch does not carry.
+        if ! grep -q '^\[chaotic-aur\]' /etc/pacman.conf; then
+            printf '\n[chaotic-aur]\nInclude = /etc/pacman.d/chaotic-mirrorlist\n' >> /etc/pacman.conf
+        fi
+
+        pacman -Sy --noconfirm
+    ) && echo "Chaotic-AUR enabled" \
+      || echo "WARNING: Chaotic-AUR setup failed -- continuing without it"
+fi
 #SETUP IS WRONG THIS IS RUN
 if ! source $HOME/ArchTitus/configs/setup.conf; then
 	# Loop through user input until the user gives a valid username

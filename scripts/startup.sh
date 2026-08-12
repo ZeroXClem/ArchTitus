@@ -369,6 +369,19 @@ cachyoskernel () {
   set_option INSTALL_CACHYOS_KERNEL ${options[$?]}
 }
 
+# @description Offer the Chaotic-AUR binary repository.
+chaoticaur () {
+  echo -ne "Enable the Chaotic-AUR repository?\n\n
+  Provides prebuilt binaries for thousands of AUR packages, so AUR installs\n
+  download instead of compiling from source. Large Rust/C++ AUR packages go\n
+  from a long build to a short download.\n\n
+  This is a THIRD-PARTY repo. It is appended BELOW the official Arch repos in\n
+  pacman.conf, so stock Arch packages always win where both carry a package.\n"
+  options=(no yes)
+  select_option $? 4 "${options[@]}"
+  set_option INSTALL_CHAOTIC_AUR ${options[$?]}
+}
+
 # More features in future
 # language (){}
 
@@ -397,6 +410,9 @@ cudatoolkit
 clear
 logo
 cachyoskernel
+clear
+logo
+chaoticaur
 clear
 logo
 diskpart
