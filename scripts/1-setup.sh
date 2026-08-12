@@ -327,14 +327,26 @@ if [ $(whoami) = "root"  ]; then
 else
 	echo "You are already a user proceed with aur installs"
 fi
+# mkinitcpio now ships a systemd-based default (HOOKS=(base systemd ...)), but
+# every initramfs edit in this project targets the udev-based set: the `encrypt`
+# hook below, the cryptdevice= cmdline written by 3-post-setup.sh, and the
+# plymouth / plymouth-encrypt seds there too. Under systemd-init none of those
+# take effect -- legacy hooks' run_hook is never executed and cryptdevice= is
+# never parsed -- so a LUKS root is never unlocked and the machine hangs in the
+# initramfs forever, while the boot splash silently does nothing.
+#
+# Set the hook list explicitly instead of patching whatever shipped. The old
+# `sed s/filesystems/encrypt filesystems/g` also matched the word "filesystems"
+# inside the config's comments.
+BASE_HOOKS="base udev autodetect microcode modconf kms keyboard keymap consolefont block"
 if [[ ${FS} == "luks" ]]; then
-# Making sure to edit mkinitcpio conf if luks is selected
-# add encrypt in mkinitcpio.conf before filesystems in hooks
-    sed -i 's/filesystems/encrypt filesystems/g' /etc/mkinitcpio.conf
-# regenerate every initramfs preset -- `-p linux` silently skips any other
-# kernel (linux-lts, linux-zen, linux-cachyos), leaving it unbootable under LUKS
-    mkinitcpio -P
+    sed -i "s/^HOOKS=.*/HOOKS=(${BASE_HOOKS} encrypt filesystems fsck)/" /etc/mkinitcpio.conf
+else
+    sed -i "s/^HOOKS=.*/HOOKS=(${BASE_HOOKS} filesystems fsck)/" /etc/mkinitcpio.conf
 fi
+# -P regenerates every preset; `-p linux` silently skipped linux-lts and
+# linux-cachyos, leaving those entries unbootable under LUKS.
+mkinitcpio -P
 echo -ne "
 -------------------------------------------------------------------------
                     SYSTEM READY FOR 2-user.sh
