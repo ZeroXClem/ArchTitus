@@ -82,21 +82,23 @@ createsubvolumes () {
 }
 
 # @description Mount all btrfs subvolumes after root has been mounted.
+# Uses ${ROOT_DEVICE}, not ${partition3}: under LUKS the filesystem lives on the
+# opened mapper device, and the raw partition holds the encryption header.
 mountallsubvol () {
-    mount -o ${MOUNT_OPTIONS},subvol=@home ${partition3} /mnt/home
-    mount -o ${MOUNT_OPTIONS},subvol=@tmp ${partition3} /mnt/tmp
-    mount -o ${MOUNT_OPTIONS},subvol=@var ${partition3} /mnt/var
-    mount -o ${MOUNT_OPTIONS},subvol=@.snapshots ${partition3} /mnt/.snapshots
+    mount -o ${MOUNT_OPTIONS},subvol=@home ${ROOT_DEVICE} /mnt/home
+    mount -o ${MOUNT_OPTIONS},subvol=@tmp ${ROOT_DEVICE} /mnt/tmp
+    mount -o ${MOUNT_OPTIONS},subvol=@var ${ROOT_DEVICE} /mnt/var
+    mount -o ${MOUNT_OPTIONS},subvol=@.snapshots ${ROOT_DEVICE} /mnt/.snapshots
 }
 
-# @description BTRFS subvolulme creation and mounting. 
+# @description BTRFS subvolulme creation and mounting.
 subvolumesetup () {
 # create nonroot subvolumes
-    createsubvolumes     
-# unmount root to remount with subvolume 
+    createsubvolumes
+# unmount root to remount with subvolume
     umount /mnt
 # mount @ subvolume
-    mount -o ${MOUNT_OPTIONS},subvol=@ ${partition3} /mnt
+    mount -o ${MOUNT_OPTIONS},subvol=@ ${ROOT_DEVICE} /mnt
 # make directories home, .snapshots, var, tmp
     mkdir -p /mnt/{home,var,tmp,.snapshots}
 # mount subvolumes
@@ -111,6 +113,11 @@ else
     partition3=${DISK}3
 fi
 
+# Device the root filesystem is actually created on and mounted from. For plain
+# btrfs/ext4 that is the partition itself; the LUKS branch below reassigns it to
+# the opened mapper device.
+ROOT_DEVICE=${partition3}
+
 if [[ "${FS}" == "btrfs" ]]; then
     mkfs.vfat -F32 -n "EFIBOOT" ${partition2}
     mkfs.btrfs -L ROOT ${partition3} -f
@@ -124,12 +131,16 @@ elif [[ "${FS}" == "luks" ]]; then
     mkfs.vfat -F32 -n "EFIBOOT" ${partition2}
 # enter luks password to cryptsetup and format root partition
     echo -n "${LUKS_PASSWORD}" | cryptsetup -y -v luksFormat ${partition3} -
-# open luks container and ROOT will be place holder 
+# open luks container and ROOT will be place holder
     echo -n "${LUKS_PASSWORD}" | cryptsetup open ${partition3} ROOT -
+# from here on the filesystem lives on the mapper device. Formatting or mounting
+# ${partition3} instead would target the raw partition and clobber the LUKS
+# header that was just written -- mkfs refuses outright and the install aborts.
+    ROOT_DEVICE=/dev/mapper/ROOT
 # now format that container
-    mkfs.btrfs -L ROOT ${partition3}
+    mkfs.btrfs -L ROOT ${ROOT_DEVICE} -f
 # create subvolumes for btrfs
-    mount -t btrfs ${partition3} /mnt
+    mount -t btrfs ${ROOT_DEVICE} /mnt
     subvolumesetup
 # store uuid of encrypted partition for grub
     echo ENCRYPTED_PARTITION_UUID=$(blkid -s UUID -o value ${partition3}) >> $CONFIGS_DIR/setup.conf
