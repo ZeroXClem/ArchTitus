@@ -121,17 +121,47 @@ echo -ne "
 "
 PLYMOUTH_THEMES_DIR="$HOME/ArchTitus/configs/usr/share/plymouth/themes"
 PLYMOUTH_THEME="arch-glow" # can grab from config later if we allow selection
-mkdir -p /usr/share/plymouth/themes
-echo 'Installing Plymouth theme...'
-cp -rf ${PLYMOUTH_THEMES_DIR}/${PLYMOUTH_THEME} /usr/share/plymouth/themes
-if [[ $FS == "luks" ]]; then
-  sed -i 's/HOOKS=(base udev*/& plymouth/' /etc/mkinitcpio.conf # add plymouth after base udev
-  sed -i 's/HOOKS=(base udev \(.*block\) /&plymouth-/' /etc/mkinitcpio.conf # create plymouth-encrypt after block hook
-else
-  sed -i 's/HOOKS=(base udev*/& plymouth/' /etc/mkinitcpio.conf # add plymouth after base udev
+
+# plymouth has to actually be installed before its hooks go into
+# mkinitcpio.conf. It was only ever listed in pkg-files/aur-pkgs.txt, which
+# 2-user.sh installs -- and 2-user.sh is skipped entirely for
+# DESKTOP_ENV=server, and needs an AUR helper besides. This block ran
+# unconditionally regardless, so those installs ended up with
+#
+#     ==> ERROR: Hook 'plymouth' cannot be found
+#     ==> ERROR: Hook 'plymouth-encrypt' cannot be found
+#
+# for every kernel preset, leaving the machine with no regenerated initramfs.
+# plymouth is in the official repos now, so prefer that over the AUR build, but
+# skip if something already provides it (plymouth-git conflicts with plymouth).
+if ! pacman -T plymouth &>/dev/null; then
+  pacman -S --noconfirm --needed plymouth || true
 fi
-plymouth-set-default-theme -R arch-glow # sets the theme and runs mkinitcpio
-echo 'Plymouth theme installed'
+
+if pacman -T plymouth &>/dev/null; then
+  mkdir -p /usr/share/plymouth/themes
+  echo 'Installing Plymouth theme...'
+  cp -rf ${PLYMOUTH_THEMES_DIR}/${PLYMOUTH_THEME} /usr/share/plymouth/themes
+  # Same edit for both LUKS and non-LUKS: add plymouth after base udev.
+  #
+  # There used to be a second sed here rewriting `encrypt` into
+  # `plymouth-encrypt` for LUKS. That hook does not exist -- it only ever came
+  # from the AUR plymouth-git build. Official plymouth (26.134.222-2) ships
+  # exactly two install hooks, `plymouth` and `plymouth-shutdown`, so naming
+  # plymouth-encrypt failed every kernel preset with
+  #
+  #     ==> ERROR: Hook 'plymouth-encrypt' cannot be found
+  #
+  # which is how a LUKS install ended up with no valid initramfs. The plain
+  # `encrypt` hook placed by 1-setup.sh does the unlocking; plymouth just
+  # draws the splash around it.
+  sed -i 's/HOOKS=(base udev*/& plymouth/' /etc/mkinitcpio.conf
+  plymouth-set-default-theme -R arch-glow # sets the theme and runs mkinitcpio
+  echo 'Plymouth theme installed'
+else
+  echo 'WARNING: plymouth unavailable -- skipping boot splash rather than adding'
+  echo 'hooks for a missing package, which would break initramfs generation.'
+fi
 
 echo -ne "
 -------------------------------------------------------------------------
