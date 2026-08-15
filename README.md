@@ -1,14 +1,12 @@
 # ArchTitus Installer – Revived by ZeroXClem
 
-![ArchTitus Banner](https://zeroxclem.com/assets/archtitus-banner.png)
-
 **A modern, streamlined Arch Linux installation script inspired by the original ArchTitus project, now improved and maintained by ZeroXClem.**
 
 ---
 
 ## 🚀 Quick Install
 ```bash
-bash <(curl -L arch.zeroxclem.com/archtitus)
+bash <(curl -L arch.zeroxclem.org/install)
 ```
 ---
 
@@ -33,7 +31,7 @@ ArchTitus simplifies Arch Linux installation through a guided script that handle
 3. **Boot from Media** and connect to the internet.
 4. **Run the Script:**
    ```bash
-   bash <(curl -L arch.zeroxclem.com/archtitus)
+   bash <(curl -L arch.zeroxclem.org/install)
    ```
 5. Follow the prompts to complete the setup.
 6. **Reboot** and enjoy your new Arch Linux system!
@@ -41,7 +39,7 @@ ArchTitus simplifies Arch Linux installation through a guided script that handle
 ---
 
 ## 🌐 Project Links
-- **Website:** [arch.zeroxclem.com](https://arch.zeroxclem.com)
+- **Website:** [arch.zeroxclem.org](https://arch.zeroxclem.org)
 - **GitHub Repo:** [ZeroXClem/ArchTitus](https://github.com/ZeroXClem/ArchTitus)
 
 ---
