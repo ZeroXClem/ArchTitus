@@ -8,6 +8,7 @@ rxvt-unicode
 alsa-utils
 pipewire
 pipewire-alsa
+pipewire-audio
 pipewire-pulse
 wireplumber
 wireless_tools

@@ -79,6 +79,7 @@ patch
 picom
 pipewire
 pipewire-alsa
+pipewire-audio
 pipewire-jack
 pipewire-pulse
 pkgconf
