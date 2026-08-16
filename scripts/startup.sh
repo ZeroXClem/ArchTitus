@@ -224,25 +224,47 @@ esac
 # @description Detects and sets timezone. 
 timezone () {
 # Added this from arch wiki https://wiki.archlinux.org/title/System_time
-time_zone="$(curl --fail https://ipapi.co/timezone)"
-echo -ne "
+#
+# ipapi.co's free tier rate-limits by IP and answers with a quota message, not a
+# zone name, so the reply is only trusted when it names a real file under
+# /usr/share/zoneinfo. Unvalidated, an empty answer used to be accepted at the
+# "is this correct?" prompt and written as TIMEZONE=, which turned 1-setup.sh's
+# `ln -s /usr/share/zoneinfo/${TIMEZONE} /etc/localtime` into a link to the
+# zoneinfo DIRECTORY -- the installed system then had no working local time.
+time_zone="$(curl --fail -s --max-time 5 https://ipapi.co/timezone 2>/dev/null)"
+if [[ -z "$time_zone" || ! -f "/usr/share/zoneinfo/$time_zone" ]]; then
+    echo -ne "Could not detect your timezone automatically.\n"
+    time_zone=""
+else
+    echo -ne "
 System detected your timezone to be '$time_zone' \n"
-echo -ne "Is this correct?
-" 
-options=("Yes" "No")
-select_option $? 1 "${options[@]}"
+    echo -ne "Is this correct?
+"
+    options=("Yes" "No")
+    select_option $? 1 "${options[@]}"
 
-case ${options[$?]} in
-    y|Y|yes|Yes|YES)
-    echo "${time_zone} set as timezone"
-    set_option TIMEZONE $time_zone;;
-    n|N|no|NO|No)
-    echo "Please enter your desired timezone e.g. Europe/London :" 
-    read new_timezone
-    echo "${new_timezone} set as timezone"
-    set_option TIMEZONE $new_timezone;;
-    *) echo "Wrong option. Try again";timezone;;
-esac
+    case ${options[$?]} in
+        y|Y|yes|Yes|YES)
+        echo "${time_zone} set as timezone"
+        set_option TIMEZONE "$time_zone"
+        return;;
+        n|N|no|NO|No)
+        time_zone="";;
+        *) echo "Wrong option. Try again";timezone;return;;
+    esac
+fi
+
+# Ask until we get a zone that actually exists, otherwise the same broken
+# symlink lands in the installed system by a different route.
+while true; do
+    read -rp "Please enter your desired timezone e.g. Europe/London : " new_timezone
+    if [[ -n "$new_timezone" && -f "/usr/share/zoneinfo/$new_timezone" ]]; then
+        echo "${new_timezone} set as timezone"
+        set_option TIMEZONE "$new_timezone"
+        break
+    fi
+    echo "'${new_timezone}' is not a valid timezone. See /usr/share/zoneinfo/ for the list."
+done
 }
 # @description Set user's keyboard mapping. 
 keymap () {
@@ -342,7 +364,12 @@ installtype () {
 
 # @description Choose whether to install the CUDA toolkit. NVIDIA hardware only.
 cudatoolkit () {
-  if ! grep -qE "NVIDIA|GeForce" <<< "$(lspci)"; then
+  # Matched on PCI vendor ID 10de, not on the marketing name, for the same
+  # reason 1-setup.sh does: the "NVIDIA"/"GeForce" strings come from the ISO's
+  # pci.ids snapshot, and a card newer than that snapshot renders as a bare
+  # "Device 2484". The prompt was then skipped in silence and INSTALL_CUDA
+  # written as no, on a machine that has a perfectly good NVIDIA GPU.
+  if ! lspci -nn | grep -E '\[03[0-9a-f]{2}\]' | grep -qi '\[10de:'; then
     set_option INSTALL_CUDA no
     return
   fi

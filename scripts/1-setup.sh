@@ -53,12 +53,25 @@ echo -ne "
 "
 sed -i 's/^#en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen
 locale-gen
-timedatectl --no-ask-password set-timezone ${TIMEZONE}
-timedatectl --no-ask-password set-ntp 1
-localectl --no-ask-password set-locale LANG="en_US.UTF-8" LC_TIME="en_US.UTF-8"
-ln -s /usr/share/zoneinfo/${TIMEZONE} /etc/localtime
-# Set keymaps
-localectl --no-ask-password set-keymap ${KEYMAP}
+
+# Written as plain files rather than through localectl/timedatectl.
+#
+# arch-chroot bind-mounts the host's /run into the chroot, which includes
+# /run/dbus/system_bus_socket. localectl and timedatectl are D-Bus clients, so
+# inside the chroot they connect to the LIVE ISO's systemd-localed and
+# systemd-timedated and edit the ISO's /etc -- a ramdisk thrown away at reboot.
+# The installed system was left with no /etc/locale.conf (so LANG unset and
+# every app falling back to the C locale) and no /etc/vconsole.conf (so the
+# chosen keymap never applied at the console). These files are exactly what
+# those tools would have written, and they land in the right root.
+echo "LANG=en_US.UTF-8" > /etc/locale.conf
+echo "LC_TIME=en_US.UTF-8" >> /etc/locale.conf
+echo "KEYMAP=${KEYMAP}" > /etc/vconsole.conf
+
+# -f because /etc/localtime may already exist from the pacstrap set; plain
+# `ln -s` fails on it and leaves the system on UTC.
+ln -sf /usr/share/zoneinfo/${TIMEZONE} /etc/localtime
+hwclock --systohc
 
 # Add sudo no password rights
 sed -i 's/^# %wheel ALL=(ALL) NOPASSWD: ALL/%wheel ALL=(ALL) NOPASSWD: ALL/' /etc/sudoers
