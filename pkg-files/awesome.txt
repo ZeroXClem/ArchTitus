@@ -6,8 +6,10 @@ lxsession
 rxvt-unicode
 --END OF MINIMAL INSTALL--
 alsa-utils
-pulseaudio
-pulseaudio-alsa
+pipewire
+pipewire-alsa
+pipewire-pulse
+wireplumber
 wireless_tools
 zsh
 dunst

@@ -77,11 +77,12 @@ p7zip
 papirus-icon-theme
 patch
 picom
+pipewire
+pipewire-alsa
+pipewire-jack
+pipewire-pulse
 pkgconf
 powerline-fonts
-pulseaudio
-pulseaudio-alsa
-pulseaudio-bluetooth
 python-notify2
 python-psutil
 python-pyqt5
@@ -106,6 +107,7 @@ which
 wine-gecko
 wine-mono
 winetricks
+wireplumber
 zip
 zsh
 zsh-syntax-highlighting
