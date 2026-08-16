@@ -26,20 +26,82 @@ echo -ne "
 Setting up mirrors for optimal download
 "
 source $CONFIGS_DIR/setup.conf
-iso=$(curl -4 ifconfig.co/country-iso)
 timedatectl set-ntp true
-pacman -S --noconfirm archlinux-keyring #update keyrings to latest to prevent packages failing to install
+
+# Refresh the package databases BEFORE installing anything.
+#
+# The ISO ships a sync database frozen at the date the image was built. Arch
+# mirrors only carry the CURRENT version of each package, so the moment the ISO
+# is more than a few days old every `pacman -S` below resolves to a version that
+# no longer exists on any mirror and dies with
+#
+#     error: failed retrieving file 'archlinux-keyring-*.pkg.tar.zst'
+#     from <mirror> : The requested URL returned error: 404
+#
+# This has to happen before the reflector install, since reflector is itself a
+# package that gets pulled from those same mirrors.
+sed -i 's/^#ParallelDownloads/ParallelDownloads/' /etc/pacman.conf
+pacman -Sy --noconfirm
+
+pacman -S --noconfirm --needed archlinux-keyring #update keyrings to latest to prevent packages failing to install
 pacman -S --noconfirm --needed pacman-contrib terminus-font
 setfont ter-v22b
-sed -i 's/^#ParallelDownloads/ParallelDownloads/' /etc/pacman.conf
 pacman -S --noconfirm --needed reflector rsync grub
 cp /etc/pacman.d/mirrorlist /etc/pacman.d/mirrorlist.backup
+
+# @description Replace the mirrorlist, but only with one reflector actually
+# produced. Passing --save straight to /etc/pacman.d/mirrorlist means a run that
+# fails partway leaves the live mirrorlist truncated or empty, and every
+# subsequent pacman call dies with "no servers configured for repository core".
+# Staging through a temp file and requiring at least one Server= line makes a
+# failed refresh a no-op instead of a broken install.
+# @arg $@ any Extra reflector filters (e.g. --country US).
+set_mirrors () {
+    local tmp
+    tmp=$(mktemp)
+    if reflector --protocol https --latest 20 --sort rate --download-timeout 10 \
+         "$@" --save "$tmp" &>/dev/null && grep -q '^Server' "$tmp"; then
+        cat "$tmp" > /etc/pacman.d/mirrorlist
+        rm -f "$tmp"
+        return 0
+    fi
+    rm -f "$tmp"
+    return 1
+}
+
+# ifconfig.co rate-limits hard (HTTP 429) and its body is then an error string,
+# not a country code. Unquoted, that string used to be split into several argv
+# entries and reflector aborted on `--country`; empty, it swallowed the next
+# flag instead. Both left the ISO mirrorlist in place silently. Time-box the
+# lookup, try a second provider, and keep the result only if it really is a
+# two-letter code.
+iso=$(curl -4 -fsS --max-time 5 https://ifconfig.co/country-iso 2>/dev/null | tr -dc 'A-Za-z')
+if [[ ${#iso} -ne 2 ]]; then
+    iso=$(curl -4 -fsS --max-time 5 https://ipinfo.io/country 2>/dev/null | tr -dc 'A-Za-z')
+fi
+[[ ${#iso} -ne 2 ]] && iso=""
+
 echo -ne "
 -------------------------------------------------------------------------
-                    Setting up $iso mirrors for faster downloads
+                    Setting up ${iso:-global} mirrors for faster downloads
 -------------------------------------------------------------------------
 "
-reflector -a 48 -c $iso -f 5 -l 20 --sort rate --save /etc/pacman.d/mirrorlist
+# The country filter is an optimisation, never a requirement. `-a 48` (synced in
+# the last 48h) plus `-c <country>` plus `-f 5` was strict enough that countries
+# with few mirrors returned "error: no mirrors found" and the refresh silently
+# did nothing. Fall back to a global rate-sorted list, then to the ISO's own
+# mirrorlist, so there is always something usable.
+if [[ -n "$iso" ]] && set_mirrors --country "$iso"; then
+    echo "Mirrorlist set from $iso mirrors"
+elif set_mirrors; then
+    echo "No usable $iso mirrors; using the fastest global mirrors instead"
+else
+    echo "WARNING: reflector failed; keeping the mirrorlist shipped on the ISO"
+    cat /etc/pacman.d/mirrorlist.backup > /etc/pacman.d/mirrorlist
+fi
+
+# Force a re-sync against whatever mirrors were just selected.
+pacman -Syy --noconfirm
 mkdir /mnt &>/dev/null # Hiding error message if any
 echo -ne "
 -------------------------------------------------------------------------
