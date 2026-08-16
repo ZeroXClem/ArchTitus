@@ -122,11 +122,20 @@ sgdisk -a 2048 -o ${DISK} # new gpt disk 2048 alignment
 # create partitions
 sgdisk -n 1::+1M --typecode=1:ef02 --change-name=1:'BIOSBOOT' ${DISK} # partition 1 (BIOS Boot Partition)
 # partition 2 (UEFI Boot Partition). 1G, not the 300M this used to be: the ESP
-# is mounted at /boot, so every kernel AND its initramfs lives here. Measured on
-# a real install with NVIDIA early KMS (the nvidia modules in MODULES=()), an
-# initramfs is ~118MB rather than ~21MB, so each kernel costs ~135MB:
+# is mounted at /boot, so every kernel AND its initramfs lives here. With NVIDIA
+# early KMS (the nvidia modules in MODULES=()) an initramfs is enormous, because
+# the driver's GSP firmware blobs get pulled in alongside the modules.
 #
-#   1 kernel  149MB | 2 kernels 284MB | 3 kernels 419MB   (+15MB microcode)
+# Re-measured on a finished linux + linux-lts install, driver 610.57.04:
+#
+#   initramfs-linux.img 231MB | initramfs-linux-lts.img 229MB | ucode 15MB
+#   1 kernel ~245MB | 2 kernels ~524MB | 3 kernels ~754MB
+#
+# That is roughly 230MB per kernel, not the ~135MB first estimated here. Two
+# kernels sit at 52% of 1G, which is comfortable. Three (adding linux-cachyos)
+# reaches ~754MB and leaves ~270MB free -- barely above the one-image transient
+# headroom mkinitcpio needs, so a 3-kernel NVIDIA box is close to the edge even
+# at 1G. Revisit this if a fourth kernel ever becomes a normal choice.
 #
 # At 300M a two-kernel NVIDIA install already died with
 # "Initcpio image generation FAILED: 'bsdtar (step 1)' reported an error",

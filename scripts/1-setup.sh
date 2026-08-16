@@ -73,6 +73,13 @@ echo "KEYMAP=${KEYMAP}" > /etc/vconsole.conf
 ln -sf /usr/share/zoneinfo/${TIMEZONE} /etc/localtime
 hwclock --systohc
 
+# `timedatectl set-ntp 1` was a D-Bus call with exactly the same problem as the
+# locale ones above: it turned NTP on for the live ISO, and the installed system
+# came up with systemd-timesyncd disabled and "System clock synchronized: no".
+# `systemctl enable` just writes symlinks under /etc/systemd/system, so unlike
+# the timedatectl/localectl calls it works offline and lands in the target root.
+systemctl enable systemd-timesyncd.service
+
 # Add sudo no password rights
 sed -i 's/^# %wheel ALL=(ALL) NOPASSWD: ALL/%wheel ALL=(ALL) NOPASSWD: ALL/' /etc/sudoers
 sed -i 's/^# %wheel ALL=(ALL:ALL) NOPASSWD: ALL/%wheel ALL=(ALL:ALL) NOPASSWD: ALL/' /etc/sudoers
